@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: demo-service
+  description: Eerste testcomponent
+spec:
+  type: service
+  lifecycle: experimental
+  owner: roegema

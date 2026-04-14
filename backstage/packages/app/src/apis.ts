@@ -1,8 +1,8 @@
 import {
   ScmIntegrationsApi,
   scmIntegrationsApiRef,
-  ScmAuth,
 } from '@backstage/integration-react';
+
 import {
   AnyApiFactory,
   configApiRef,
@@ -13,7 +13,7 @@ export const apis: AnyApiFactory[] = [
   createApiFactory({
     api: scmIntegrationsApiRef,
     deps: { configApi: configApiRef },
-    factory: ({ configApi }) => ScmIntegrationsApi.fromConfig(configApi),
+    factory: ({ configApi }) =>
+      ScmIntegrationsApi.fromConfig(configApi),
   }),
-  ScmAuth.createDefaultApiFactory(),
 ];

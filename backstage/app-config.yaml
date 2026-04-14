@@ -62,37 +62,50 @@ techdocs:
   publisher:
     type: 'local' # Alternatives - 'googleGcs' or 'awsS3'. Read documentation for using alternatives.
 
-auth:
-  # see https://backstage.io/docs/auth/ to learn about auth providers
-  providers:
-    # See https://backstage.io/docs/auth/guest/provider
-    guest: {}
+# auth:
+#   # see https://backstage.io/docs/auth/ to learn about auth providers
+#   providers:
+#     # See https://backstage.io/docs/auth/guest/provider
+#     guest: {}
 
 scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
 
 catalog:
-  import:
-    entityFilename: catalog-info.yaml
-    pullRequestBranchName: backstage-integration
   rules:
-    - allow: [Component, System, API, Resource, Location]
+    - allow: [Component, System, API, Resource, Location, User, Group]
   locations:
-    # Local example data, file locations are relative to the backend process, typically `packages/backend`
     - type: file
-      target: ../../examples/entities.yaml
+      target: ../../user.yaml
 
-    # Local example template
     - type: file
-      target: ../../examples/template/template.yaml
-      rules:
-        - allow: [Template]
+      target: ../../component.yaml
 
-    # Local example organizational data
-    - type: file
-      target: ../../examples/org.yaml
-      rules:
-        - allow: [User, Group]
+# catalog:
+#   import:
+#     entityFilename: catalog-info.yaml
+#     pullRequestBranchName: backstage-integration
+#   rules:
+#     - allow: [Component, System, API, Resource, Location]
+#   locations:
+#     # Local example data, file locations are relative to the backend process, typically `packages/backend`
+#     - type: file
+#       target: ../../examples/entities.yaml
+
+#     # Local example template
+#     - type: file
+#       target: ../../examples/template/template.yaml
+#       rules:
+#         - allow: [Template]
+
+#     # Local example organizational data
+#     - type: file
+#       target: ../../examples/org.yaml
+#       rules:
+#         - allow: [User, Group]
+
+#     - type: file
+#       target: ./user.yaml
 
     ## Uncomment these lines to add more example data
     # - type: url
@@ -110,4 +123,4 @@ kubernetes:
 # see https://backstage.io/docs/permissions/getting-started for more on the permission framework
 permission:
   # setting this to `false` will disable permissions
-  enabled: true
+  enabled: false

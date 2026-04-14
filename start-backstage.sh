@@ -28,5 +28,16 @@ readonly COLOR_CYAN="\e[1;36m"
 source ${SECRETS_FILE}
 
 cd ${SCRIPT_DIR}/${BACKSTAGE_APP}
-yarn start
 
+
+# # DEBUG config
+# echo ${GITHUB_TOKEN}
+# echo ${AUTH_GITHUB_CLIENT_ID}
+# echo ${AUTH_GITHUB_CLIENT_SECRET}
+# yarn backstage-cli config:print \
+#   --config ./app-config.yaml \
+#   --config ./app-config.local.yaml
+
+yarn start \
+  --config ${SCRIPT_DIR}/${BACKSTAGE_APP}/app-config.yaml \
+  --config ${SCRIPT_DIR}/${BACKSTAGE_APP}/app-config.local.yaml
