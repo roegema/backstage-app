@@ -14,7 +14,7 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 PARENT_DIR="$(cd ${SCRIPT_DIR} && cd ../ && pwd)"
 SECRETS_FILE="${PARENT_DIR}/python-app/__secrets/custom_info.sh"
 DEBUG_ON="yes"
-BACKSTAGE_APP=backstage
+BACKSTAGE_APP="backstage"
 
 # Colors
 readonly COLOR_NC="\e[0m"
@@ -26,9 +26,28 @@ readonly COLOR_MAGENTA="\e[1;35m"
 readonly COLOR_CYAN="\e[1;36m"
 
 source ${SECRETS_FILE}
-
 cd ${SCRIPT_DIR}/${BACKSTAGE_APP}
 
+# Ensure the pg driver is installed (run once if needed)
+# yarn workspace backend add pg
+
+echo -e "${COLOR_CYAN}Ensuring PostgreSQL container is running...${COLOR_NC}"
+# Start the database container in detached mode
+docker compose up -d
+
+# Wait for the database to be ready to accept connections
+echo -e "${COLOR_YELLOW}Waiting for Postgres to be ready...${COLOR_NC}"
+until docker exec backstage-db pg_isready -U postgres; do
+  echo "Postgres is unavailable - sleeping"
+  sleep 2
+done
+
+echo -e "${COLOR_GREEN}Database is up! Starting Backstage app...${COLOR_NC}"
+
+# Start Backstage with the specified configurations
+yarn start \
+  --config ${SCRIPT_DIR}/${BACKSTAGE_APP}/app-config.yaml \
+  --config ${SCRIPT_DIR}/${BACKSTAGE_APP}/app-config.local.yaml
 
 # # DEBUG config
 # echo ${GITHUB_TOKEN}
@@ -38,6 +57,3 @@ cd ${SCRIPT_DIR}/${BACKSTAGE_APP}
 #   --config ./app-config.yaml \
 #   --config ./app-config.local.yaml
 
-yarn start \
-  --config ${SCRIPT_DIR}/${BACKSTAGE_APP}/app-config.yaml \
-  --config ${SCRIPT_DIR}/${BACKSTAGE_APP}/app-config.local.yaml
