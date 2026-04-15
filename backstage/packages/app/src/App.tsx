@@ -28,7 +28,7 @@ import { Root } from './components/Root';
 import {
   AlertDisplay,
   OAuthRequestDialog,
-  SignInPage, // Toegevoegd
+  SignInPage,
 } from '@backstage/core-components';
 import { createApp } from '@backstage/app-defaults';
 import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
@@ -37,17 +37,15 @@ import { RequirePermission } from '@backstage/plugin-permission-react';
 import { catalogEntityCreatePermission } from '@backstage/plugin-catalog-common/alpha';
 import { NotificationsPage } from '@backstage/plugin-notifications';
 import { SignalsDisplay } from '@backstage/plugin-signals';
-import { githubAuthApiRef } from '@backstage/core-plugin-api'; // Toegevoegd
+import { githubAuthApiRef } from '@backstage/core-plugin-api';
 
 const app = createApp({
   apis,
-  // --- NIEUW GEDEELTE START ---
   components: {
     SignInPage: props => (
       <SignInPage
         {...props}
         providers={[
-          'guest',
           {
             id: 'github-auth-provider',
             title: 'GitHub',
@@ -58,7 +56,6 @@ const app = createApp({
       />
     ),
   },
-  // --- NIEUW GEDEELTE EIND ---
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
       createComponent: scaffolderPlugin.routes.root,
