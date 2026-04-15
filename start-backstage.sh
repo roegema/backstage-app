@@ -15,7 +15,7 @@ PARENT_DIR="$(cd ${SCRIPT_DIR} && cd ../ && pwd)"
 SECRETS_FILE="${PARENT_DIR}/python-app/__secrets/custom_info.sh"
 DEBUG_ON="yes"
 BACKSTAGE_APP="backstage"
-
+export BACKSTAGE_APP_DIR="${SCRIPT_DIR}/${BACKSTAGE_APP}"
 # Colors
 readonly COLOR_NC="\e[0m"
 readonly COLOR_RED="\e[1;31m"
@@ -26,7 +26,7 @@ readonly COLOR_MAGENTA="\e[1;35m"
 readonly COLOR_CYAN="\e[1;36m"
 
 source ${SECRETS_FILE}
-cd ${SCRIPT_DIR}/${BACKSTAGE_APP}
+cd ${BACKSTAGE_APP_DIR}
 
 # Ensure the pg driver is installed (run once if needed)
 # yarn workspace backend add pg
@@ -56,4 +56,3 @@ yarn start \
 # yarn backstage-cli config:print \
 #   --config ./app-config.yaml \
 #   --config ./app-config.local.yaml
-

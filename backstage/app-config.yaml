@@ -72,16 +72,6 @@ scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
 
 catalog:
-  rules:
-    - allow: [Component, System, API, Resource, Location, User, Group]
-  locations:
-    - type: file
-      target: ../../user.yaml
-
-    - type: file
-      target: ../../component.yaml
-
-# catalog:
 #   import:
 #     entityFilename: catalog-info.yaml
 #     pullRequestBranchName: backstage-integration

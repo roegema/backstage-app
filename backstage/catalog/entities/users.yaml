@@ -1,0 +1,26 @@
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: roegema
+spec:
+  memberOf: [admins]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: admins
+  description: Backstage Administrators
+spec:
+  type: team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: breanna.davison
+spec:
+  profile:
+    # Intentional no displayName for testing
+    email: breanna-davison@example.com
+    picture: https://api.dicebear.com/7.x/avataaars/svg?seed=Luna&backgroundColor=transparent
+  memberOf: [team-a]
