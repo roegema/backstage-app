@@ -3,16 +3,7 @@ kind: User
 metadata:
   name: roegema
 spec:
-  memberOf: [admins]
----
-apiVersion: backstage.io/v1alpha1
-kind: Group
-metadata:
-  name: admins
-  description: Backstage Administrators
-spec:
-  type: team
-  children: []
+  memberOf: [development]
 ---
 apiVersion: backstage.io/v1alpha1
 kind: User
