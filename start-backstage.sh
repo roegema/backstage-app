@@ -12,10 +12,10 @@
 #-----------------------------------------------------------------
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 PARENT_DIR="$(cd ${SCRIPT_DIR} && cd ../ && pwd)"
-SECRETS_FILE="${PARENT_DIR}/python-app/__secrets/custom_info.sh"
+SECRETS_FILE="${PARENT_DIR}/custom_info.sh"
 DEBUG_ON="yes"
 BACKSTAGE_APP="backstage"
-export BACKSTAGE_APP_DIR="${SCRIPT_DIR}/${BACKSTAGE_APP}"
+BACKSTAGE_APP_DIR="${SCRIPT_DIR}/${BACKSTAGE_APP}"
 # Colors
 readonly COLOR_NC="\e[0m"
 readonly COLOR_RED="\e[1;31m"
@@ -46,8 +46,8 @@ echo -e "${COLOR_GREEN}Database is up! Starting Backstage app...${COLOR_NC}"
 
 # Start Backstage with the specified configurations
 yarn start \
-  --config ${SCRIPT_DIR}/${BACKSTAGE_APP}/app-config.yaml \
-  --config ${SCRIPT_DIR}/${BACKSTAGE_APP}/app-config.local.yaml
+  --config ${BACKSTAGE_APP_DIR}/app-config.yaml \
+  --config ${BACKSTAGE_APP_DIR}/app-config.local.yaml
 
 # # DEBUG config
 # echo ${GITHUB_TOKEN}
