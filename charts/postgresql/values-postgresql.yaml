@@ -1,0 +1,8 @@
+auth:
+  username: backstage
+  password: backstage
+  database: backstage
+
+primary:
+  persistence:
+    enabled: false
