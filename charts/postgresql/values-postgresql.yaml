@@ -1,0 +1,10 @@
+auth:
+  postgresPassword: postgres
+  username: backstage
+  password: backstage
+  database: backstage
+
+primary:
+  persistence:
+    enabled: true
+    size: 5Gi

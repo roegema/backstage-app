@@ -1,10 +1,5 @@
 postgresql:
-  enabled: true
-
-  auth:
-    username: backstage
-    password: backstage
-    database: backstage
+  enabled: false
 
 backstage:
   image:
@@ -23,6 +18,15 @@ backstage:
 
     backend:
       baseUrl: http://localhost:7007
+
+      database:
+        client: pg
+        connection:
+          host: backstage-postgresql
+          port: 5432
+          user: backstage
+          password: backstage
+          database: backstage
 
     auth:
       providers:

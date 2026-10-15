@@ -2,9 +2,9 @@
 
 ##################################################################
 # Author: Rene Oegema
-# Date: 14-10-2026
-# Version: 1.0
-# Description: Install Backstage with PostgreSQL on Kind
+# Date: 15-10-2026
+# Version: 2.0
+# Description: Install Backstage using external PostgreSQL
 ##################################################################
 
 set -euo pipefail
@@ -39,9 +39,6 @@ function validate_prerequisites() {
   command -v helm >/dev/null 2>&1 \
     || { SetError "helm not found"; exit 1; }
 
-  command -v kind >/dev/null 2>&1 \
-    || { SetError "kind not found"; exit 1; }
-
   SetComment "All prerequisites found."
 }
 
@@ -62,10 +59,10 @@ function create_namespace() {
 
   SetHeading "Create namespace"
 
-  if kubectl get namespace ${NS_BACKSTAGE} >/dev/null 2>&1; then
+  if kubectl get namespace "${NS_BACKSTAGE}" >/dev/null 2>&1; then
     SetComment "Namespace '${NS_BACKSTAGE}' already exists."
   else
-    kubectl create namespace ${NS_BACKSTAGE}
+    kubectl create namespace "${NS_BACKSTAGE}"
     SetComment "Namespace '${NS_BACKSTAGE}' created."
   fi
 }
@@ -80,40 +77,61 @@ function add_helm_repo() {
   SetComment "Backstage Helm repository configured."
 }
 
+function uninstall_backstage() {
+
+  SetHeading "Remove existing Backstage release"
+
+  if helm status "${BACKSTAGE_RELEASE}" \
+      -n "${NS_BACKSTAGE}" >/dev/null 2>&1; then
+
+    helm uninstall "${BACKSTAGE_RELEASE}" \
+      -n "${NS_BACKSTAGE}"
+
+    SetComment "Existing Backstage release removed."
+  else
+    SetComment "No existing Backstage release found."
+  fi
+}
+
+function verify_postgresql() {
+
+  SetHeading "Verify PostgreSQL"
+
+  if kubectl get svc backstage-postgresql \
+      -n "${NS_BACKSTAGE}" >/dev/null 2>&1; then
+
+    SetComment "PostgreSQL service found."
+  else
+    SetError "PostgreSQL service 'backstage-postgresql' not found."
+    SetError "Run setup-postgresql.sh first."
+    exit 1
+  fi
+}
+
 function install_backstage() {
 
   SetHeading "Install Backstage"
 
-  if helm status ${BACKSTAGE_RELEASE} -n ${NS_BACKSTAGE} >/dev/null 2>&1; then
-    SetComment "Release already exists."
-    SetComment "Executing Helm upgrade."
-  else
-    SetComment "Installing new release."
-  fi
-
-
-  helm upgrade --install ${BACKSTAGE_RELEASE} \
+  helm upgrade --install "${BACKSTAGE_RELEASE}" \
     backstage/backstage \
-    --version 2.8.2 \
-    --namespace ${NS_BACKSTAGE} \
+    --version 2.10.2 \
+    --namespace "${NS_BACKSTAGE}" \
     --wait \
     --timeout 15m \
     -f "${VALUES_FILE}"
 
-  SetComment "Helm deployment completed."
+  SetComment "Backstage deployment completed."
 }
 
 function wait_for_backstage() {
 
   SetHeading "Wait for Backstage"
 
-  kubectl wait \
-    --namespace ${NS_BACKSTAGE} \
-    --for=condition=Ready pod \
-    --all \
+  kubectl rollout status deployment/backstage \
+    -n "${NS_BACKSTAGE}" \
     --timeout=600s
 
-  SetComment "All pods are ready."
+  SetComment "Backstage deployment is ready."
 }
 
 function verify_deployment() {
@@ -122,19 +140,15 @@ function verify_deployment() {
 
   echo ""
   SetInfo "Pods"
-  kubectl get pods -n ${NS_BACKSTAGE}
+  kubectl get pods -n "${NS_BACKSTAGE}"
 
   echo ""
   SetInfo "Services"
-  kubectl get svc -n ${NS_BACKSTAGE}
-
-  echo ""
-  SetInfo "StatefulSets"
-  kubectl get statefulsets -n ${NS_BACKSTAGE}
+  kubectl get svc -n "${NS_BACKSTAGE}"
 
   echo ""
   SetInfo "Deployments"
-  kubectl get deployments -n ${NS_BACKSTAGE}
+  kubectl get deployments -n "${NS_BACKSTAGE}"
 
   echo ""
 
@@ -145,12 +159,10 @@ function show_backstage_info() {
 
   SetHeading "Backstage information"
 
-  kubectl get all -n ${NS_BACKSTAGE}
-
   echo ""
   SetInfo "Port Forward"
 
-  echo "kubectl port-forward svc/backstage -n ${NS_BACKSTAGE} 7007:80"
+  echo "kubectl port-forward svc/backstage -n backstage 7007:7007"
 
   echo ""
   SetInfo "Open Backstage"
@@ -158,14 +170,9 @@ function show_backstage_info() {
   echo "http://localhost:7007"
 
   echo ""
-  SetInfo "PostgreSQL Service"
+  SetInfo "Authentication test"
 
-  echo "backstage-postgresql:5432"
-
-  echo ""
-  SetInfo "PostgreSQL Secret"
-
-  echo "kubectl get secret backstage-postgresql -n ${NS_BACKSTAGE}"
+  echo "curl -i http://localhost:7007/api/auth/guest/refresh"
 }
 
 #-----------------------------------------------------------------
@@ -179,12 +186,15 @@ SetTopHeading "Setup Backstage"
 cd "${SCRIPT_DIR}"
 
 validate_prerequisites
-
 validate_files
 
 create_namespace
 
 add_helm_repo
+
+verify_postgresql
+
+uninstall_backstage
 
 install_backstage
 
@@ -195,12 +205,6 @@ verify_deployment
 show_backstage_info
 
 SetComment "Backstage installation completed successfully."
-
-###
-kubectl get pods -n backstage
-kubectl port-forward svc/backstage -n backstage 7007:7007
-
-
 
 ####
 exit 0
