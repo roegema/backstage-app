@@ -48,14 +48,14 @@ backstage:
   appConfig:
 
     app:
-      title: Backstage?
-      baseUrl: http://localhost:7007
+      title: Rene Oegema
+      baseUrl: https://backstage.test.com
 
     organization:
       name: LocalDev
 
     backend:
-      baseUrl: http://localhost:7007
+      baseUrl: https://backstage.test.com
 
       database:
         client: pg

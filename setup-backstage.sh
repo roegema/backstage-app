@@ -2,10 +2,10 @@
 
 ##################################################################
 # Author: Rene Oegema
-# Date: 15-10-2026
-# Version: 3.3
+# Date: 16-10-2026
+# Version: 3.4
 # Description: Install or upgrade Backstage using external
-#              PostgreSQL
+#              PostgreSQL including Ingress configuration
 ##################################################################
 
 set -euo pipefail
@@ -27,7 +27,11 @@ NS_BACKSTAGE="backstage"
 
 BACKSTAGE_RELEASE="backstage"
 
+BACKSTAGE_HOST="backstage.test.com"
+
 VALUES_FILE="${SCRIPT_DIR}/charts/backstage/values-backstage.yaml"
+
+INGRESS_FILE="/tmp/backstage-ingress.yaml"
 
 #-----------------------------------------------------------------
 # FUNCTIONS
@@ -166,6 +170,37 @@ function wait_for_backstage() {
   SetComment "Backstage deployment is ready."
 }
 
+function create_ingress() {
+
+  SetHeading "Create / Update Ingress"
+
+  cat > "${INGRESS_FILE}" <<EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backstage
+  namespace: ${NS_BACKSTAGE}
+spec:
+  ingressClassName: nginx
+
+  rules:
+    - host: ${BACKSTAGE_HOST}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backstage
+                port:
+                  number: 7007
+EOF
+
+  kubectl apply -f "${INGRESS_FILE}"
+
+  SetComment "Ingress configured for ${BACKSTAGE_HOST}"
+}
+
 function verify_deployment() {
 
   SetHeading "Verify deployment"
@@ -181,6 +216,10 @@ function verify_deployment() {
   echo ""
   SetInfo "Deployments"
   kubectl get deployments -n "${NS_BACKSTAGE}"
+
+  echo ""
+  SetInfo "Ingress"
+  kubectl get ingress -n "${NS_BACKSTAGE}"
 }
 
 function show_backstage_info() {
@@ -196,37 +235,23 @@ function show_backstage_info() {
   echo "${BACKSTAGE_IMAGE_VERSION}"
 
   echo ""
-  SetInfo "Port Forward"
-  echo "kubectl port-forward svc/backstage -n backstage 7007:7007"
+  SetInfo "Backstage URL"
+  echo "https://${BACKSTAGE_HOST}"
 
   echo ""
-  SetInfo "Open Backstage"
-  echo "http://localhost:7007"
+  SetInfo "Hosts File"
+
+  echo "Add the following entry to /etc/hosts:"
+  echo ""
+  echo "127.0.0.1 ${BACKSTAGE_HOST}"
 
   echo ""
-  SetInfo "Authentication Test"
-  echo "curl -i http://localhost:7007/api/auth/guest/refresh"
+  SetInfo "GitHub OAuth Callback"
+  echo "https://${BACKSTAGE_HOST}/api/auth/github/handler/frame"
 
   echo ""
   SetInfo "Helm Releases"
   helm list -n "${NS_BACKSTAGE}"
-}
-
-function start_port_forward() {
-
-  SetHeading "Start Port Forward"
-
-  if pgrep -f "kubectl port-forward svc/backstage.*7007:7007" >/dev/null; then
-    SetComment "Port-forward already running."
-  else
-    nohup kubectl port-forward \
-      svc/backstage \
-      -n "${NS_BACKSTAGE}" \
-      7007:7007 \
-      >/tmp/backstage-port-forward.log 2>&1 &
-
-    SetComment "Port-forward started."
-  fi
 }
 
 #-----------------------------------------------------------------
@@ -255,10 +280,10 @@ install_backstage
 
 wait_for_backstage
 
+create_ingress
+
 verify_deployment
 
 show_backstage_info
-
-# start_port_forward
 
 SetComment "Backstage installation completed successfully."
