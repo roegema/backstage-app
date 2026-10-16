@@ -7,8 +7,10 @@ The environment consists of:
 - Backstage deployed via Helm
 - PostgreSQL deployed as a separate Helm release
 - Kubernetes Secrets managed separately
+- GitHub OAuth authentication
 - GitHub integration support
-- Guest authentication
+- Catalog Users and Groups
+- Software Templates
 - TechDocs support
 - Persistent PostgreSQL storage
 
@@ -17,7 +19,7 @@ The environment consists of:
 # Architecture
 
 ```text
-Kind Cluster (backstage)
+Kind Cluster
 
 Namespace: backstage
 ├── Helm Release: backstage
@@ -36,7 +38,7 @@ Namespace: ingress-nginx
 └── NGINX Ingress Controller
 
 Namespace: argocd
-└── ArgoCD
+└── Argo CD
 
 Namespace: python
 └── Python Applications
@@ -72,10 +74,11 @@ docker --version
 backstage-app/
 ├── config.sh
 ├── secrets.sh
+├── shared.sh
+│
 ├── setup-secrets.sh
 ├── setup-postgresql.sh
 ├── setup-backstage.sh
-├── shared.sh
 │
 ├── charts/
 │   ├── backstage/
@@ -84,6 +87,12 @@ backstage-app/
 │   └── postgresql/
 │       └── values-postgresql.yaml
 │
+├── catalog/
+│   └── entities/
+│       ├── users.yaml
+│       ├── groups.yaml
+│       └── component.yaml
+│
 └── docs/
     └── setup-backstage-on-k8s.md
 ```
@@ -91,8 +100,6 @@ backstage-app/
 ---
 
 # Step 1 - Configure Versions
-
-Create the central configuration file.
 
 ## config.sh
 
@@ -104,18 +111,15 @@ Create the central configuration file.
 ##################################################################
 
 BACKSTAGE_CHART_VERSION="2.10.2"
-BACKSTAGE_IMAGE_VERSION="1.42.0"
+
+BACKSTAGE_IMAGE_VERSION="1.48.0-github-r01"
 
 POSTGRESQL_CHART_VERSION="16.7.27"
 ```
 
-All installation scripts will use these versions.
-
 ---
 
 # Step 2 - Configure Secrets
-
-Create the secrets configuration file.
 
 ## secrets.sh
 
@@ -123,28 +127,51 @@ Create the secrets configuration file.
 #!/usr/bin/env bash
 
 ##################################################################
-# PostgreSQL
+# GitHub User
 ##################################################################
 
-POSTGRES_USER="backstage"
-POSTGRES_PASSWORD="backstage"
-POSTGRES_DATABASE="backstage"
-
-##################################################################
-# GitHub Personal Access Token
-##################################################################
-
-GITHUB_TOKEN="<your-token>"
+GITHUB_USER=""
 
 ##################################################################
 # GitHub OAuth Application
 ##################################################################
 
-AUTH_GITHUB_CLIENT_ID="<client-id>"
-AUTH_GITHUB_CLIENT_SECRET="<client-secret>"
+AUTH_GITHUB_CLIENT_ID=""
+AUTH_GITHUB_CLIENT_SECRET=""
+
+##################################################################
+# PostgreSQL
+##################################################################
+
+POSTGRES_USER=""
+POSTGRES_PASSWORD=""
+POSTGRES_DB=""
+POSTGRES_PORT="5432"
+POSTGRES_HOST=""
+
+##################################################################
+# GitHub Tokens
+##################################################################
+
+GITHUB_TOKEN=""
+GITHUB_TOKEN_RUNNERS=""
+
+##################################################################
+# Docker Hub
+##################################################################
+
+DOCKERHUB_USERNAME=""
+DOCKERHUB_TOKEN=""
+
+##################################################################
+# Argo CD
+##################################################################
+
+ARGOCD_USER=""
+ARGOCD_PASSWORD=""
 ```
 
-Do not commit this file to Git.
+Do not commit this file.
 
 Add it to `.gitignore`.
 
@@ -178,6 +205,25 @@ backstage-github-auth
 
 ---
 
+# PostgreSQL Secret
+
+The PostgreSQL secret contains:
+
+```text
+host
+user
+password
+database
+```
+
+Verify:
+
+```bash
+kubectl describe secret backstage-db -n backstage
+```
+
+---
+
 # Step 4 - Install PostgreSQL
 
 Install PostgreSQL as a standalone Helm release.
@@ -198,7 +244,7 @@ Expected:
 backstage-postgresql-0   Running
 ```
 
-Check the service:
+Verify the service:
 
 ```bash
 kubectl get svc -n backstage
@@ -231,6 +277,31 @@ primary:
 
 ---
 
+# PostgreSQL Port Forward
+
+For local development:
+
+```bash
+kubectl port-forward \
+  svc/backstage-postgresql \
+  -n backstage \
+  5432:5432
+```
+
+Docker containers can connect using:
+
+```text
+host.docker.internal
+```
+
+Kubernetes workloads connect using:
+
+```text
+backstage-postgresql
+```
+
+---
+
 # Step 5 - Configure Backstage
 
 ## charts/backstage/values-backstage.yaml
@@ -240,7 +311,6 @@ postgresql:
   enabled: false
 
 backstage:
-
   extraEnvVars:
 
     - name: GITHUB_TOKEN
@@ -267,10 +337,28 @@ backstage:
           name: backstage-db
           key: password
 
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          name: backstage-db
+          key: user
+
+    - name: POSTGRES_HOST
+      valueFrom:
+        secretKeyRef:
+          name: backstage-db
+          key: host
+
+    - name: POSTGRES_DB
+      valueFrom:
+        secretKeyRef:
+          name: backstage-db
+          key: database
+
   image:
-    registry: ghcr.io
-    repository: backstage/backstage
-    tag: "1.42.0"
+    registry: docker.io
+    repository: roegema/backstage
+    tag: "1.48.0-github-r01"
 
   appConfig:
 
@@ -287,25 +375,40 @@ backstage:
       database:
         client: pg
         connection:
-          host: backstage-postgresql
+          host: ${POSTGRES_HOST}
           port: 5432
-          user: backstage
+          user: ${POSTGRES_USER}
           password: ${POSTGRES_PASSWORD}
-          database: backstage
+          database: ${POSTGRES_DB}
 
     auth:
+      environment: development
+
       providers:
+
         guest:
           dangerouslyAllowOutsideDevelopment: true
 
+        github:
+          development:
+            clientId: ${AUTH_GITHUB_CLIENT_ID}
+            clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+
+            signIn:
+              resolvers:
+                - resolver: usernameMatchingUserEntityName
+
     techdocs:
       builder: local
+
       generator:
         runIn: local
+
       publisher:
         type: local
 
     catalog:
+
       rules:
         - allow:
             - Component
@@ -313,6 +416,31 @@ backstage:
             - Resource
             - System
             - Location
+            - User
+            - Group
+            - Template
+
+      locations:
+
+        - type: file
+          target: ./catalog/entities/users.yaml
+          rules:
+            - allow: [User]
+
+        - type: file
+          target: ./catalog/entities/groups.yaml
+          rules:
+            - allow: [Group]
+
+        - type: file
+          target: ./catalog/entities/component.yaml
+          rules:
+            - allow: [Component]
+
+        - type: url
+          target: https://github.com/roegema/backstage-software-templates/blob/main/python-app/template/template.yaml
+          rules:
+            - allow: [Template]
 
     integrations:
       github:
@@ -322,7 +450,40 @@ backstage:
 
 ---
 
-# Step 6 - Install Backstage
+# Step 6 - Catalog Configuration
+
+## catalog/entities/users.yaml
+
+Example:
+
+```yaml
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: roegema
+spec:
+  memberOf:
+    - development
+```
+
+---
+
+## catalog/entities/groups.yaml
+
+Example:
+
+```yaml
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: development
+spec:
+  type: team
+```
+
+---
+
+# Step 7 - Install Backstage
 
 Run:
 
@@ -335,8 +496,7 @@ The script performs:
 - Namespace validation
 - Helm repository validation
 - PostgreSQL service validation
-- PostgreSQL secret validation
-- GitHub secret validation
+- Secret validation
 - Backstage installation or upgrade
 
 Verify:
@@ -354,7 +514,7 @@ backstage-postgresql-0     Running
 
 ---
 
-# Step 7 - Verify Backstage
+# Step 8 - Verify Backstage Startup
 
 View logs:
 
@@ -362,17 +522,27 @@ View logs:
 kubectl logs deployment/backstage -n backstage
 ```
 
-Expected output:
+Expected:
 
 ```text
 Plugin initialization complete
 ```
 
-This indicates a successful startup.
+Verify readiness:
+
+```bash
+kubectl get pods -n backstage
+```
+
+Expected:
+
+```text
+1/1 Running
+```
 
 ---
 
-# Step 8 - Access Backstage
+# Step 9 - Access Backstage
 
 Create a port forward:
 
@@ -388,21 +558,90 @@ http://localhost:7007
 
 ---
 
-# Step 9 - Validate Authentication
+# Step 10 - Verify GitHub Authentication
 
-Run:
-
-```bash
-curl -i http://localhost:7007/api/auth/guest/refresh
-```
-
-Expected response:
+Login using:
 
 ```text
-HTTP/1.1 200 OK
+Sign in with GitHub
 ```
 
-The response should contain a valid authentication token.
+User mapping is resolved through:
+
+```yaml
+resolver: usernameMatchingUserEntityName
+```
+
+Example:
+
+GitHub username:
+
+```text
+roegema
+```
+
+Catalog entity:
+
+```yaml
+kind: User
+metadata:
+  name: roegema
+```
+
+This must match exactly.
+
+---
+
+# Step 11 - Verify Catalog Data
+
+Connect to PostgreSQL:
+
+```bash
+kubectl exec -it \
+  -n backstage \
+  backstage-postgresql-0 -- \
+  psql -U backstage -d backstage_plugin_catalog
+```
+
+Show all catalog entities:
+
+```sql
+select entity_ref from final_entities;
+```
+
+Expected:
+
+```text
+user:default/roegema
+user:default/breanna.davison
+
+group:default/admins
+group:default/development
+
+component:default/demo-service1
+component:default/demo-service2
+component:default/python-app
+```
+
+Show registered catalog locations:
+
+```sql
+select type, target from locations;
+```
+
+Expected:
+
+```text
+bootstrap
+file locations
+github template locations
+```
+
+Exit:
+
+```sql
+\q
+```
 
 ---
 
@@ -426,16 +665,17 @@ This preserves:
 
 - Catalog entities
 - Templates
-- Plugin data
-- User settings
+- TechDocs
+- Users
+- Groups
+- Search index
 - Notifications
-- Scaffolder data
+- Plugin data
+- PostgreSQL data
 
 ---
 
 # Database Persistence
-
-The PostgreSQL deployment and PVCs must not be removed during Backstage upgrades.
 
 Safe:
 
@@ -461,7 +701,7 @@ Not safe:
 kubectl delete pvc --all -n backstage
 ```
 
-Removing PVCs will permanently delete all stored Backstage data.
+Deleting the PVC removes all PostgreSQL data permanently.
 
 ---
 
@@ -472,26 +712,29 @@ The following components are operational:
 - ✅ Kind
 - ✅ Helm
 - ✅ PostgreSQL
-- ✅ Backstage 1.42.0
-- ✅ Guest Authentication
-- ✅ TechDocs
+- ✅ Backstage 1.48.0
+- ✅ GitHub Authentication
+- ✅ GitHub Integration
 - ✅ Catalog
+- ✅ Users and Groups
+- ✅ Software Templates
+- ✅ TechDocs
 - ✅ Scaffolder
 - ✅ Search
 - ✅ Notifications
-- ✅ GitHub Integration
-- ✅ Persistent Database Storage
+- ✅ Persistent PostgreSQL Storage
 
 ---
 
 # Recommended Next Steps
 
-1. Configure GitHub Authentication
-2. Create a dedicated Backstage Catalog repository
-3. Register software templates
-4. Enable the Kubernetes plugin
-5. Integrate ArgoCD
-6. Publish TechDocs from GitHub repositories
-7. Register applications as catalog components
+1. Configure an Ingress for Backstage.
+2. Integrate Argo CD.
+3. Enable and configure the Kubernetes plugin.
+4. Create additional software templates.
+5. Create a dedicated catalog repository.
+6. Publish TechDocs from GitHub repositories.
+7. Add CI/CD templates.
+8. Configure a production-grade authentication setup.
 
-This setup provides a solid foundation for building an Internal Developer Platform (IDP) with Backstage.
+This setup provides a solid foundation for building an Internal Developer Platform (IDP) with Backstage on Kubernetes.
