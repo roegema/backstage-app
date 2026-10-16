@@ -1,0 +1,11 @@
+auth:
+  postgresPassword: ${POSTGRES_PASSWORD}
+  username: ${POSTGRES_USER}
+  password: ${POSTGRES_PASSWORD}
+  database: ${POSTGRES_DB}
+  host: ${POSTGRES_HOST}
+
+primary:
+  persistence:
+    enabled: true
+    size: 5Gi

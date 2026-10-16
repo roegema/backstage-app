@@ -19,6 +19,10 @@ source ${SECRETS_FILE}
 DEBUG_ON="yes"
 BACKSTAGE_APP="backstage"
 BACKSTAGE_APP_DIR="${SCRIPT_DIR}/${BACKSTAGE_APP}"
+# # Include this Python virtual environment in the PATH variable
+# VENV="${HOME}/Developer/Workspace/python-venv/backstage-idps"
+# # source ${VENV}/bin/activate
+# export PATH="${VENV}/bin:${PATH}"
 
 #-----------------------------------------------------------------
 # MAIN
@@ -29,6 +33,9 @@ SetTopHeading "Start Backstage environment"
 # yarn workspace backend add pg
 SetHeading "PostgreSQL"
 SetInfo "Ensuring PostgreSQL container is running"
+
+################
+# NOTE: Setup postgres on k8s
 # Start the database container in detached mode
 docker compose up -d
 # Wait for the database to be ready to accept connections
@@ -38,17 +45,21 @@ until docker exec backstage-db pg_isready -U postgres; do
   sleep 2
 done
 SetInfo "Database is up! Starting Backstage app"
+################
 
 # Start Backstage with the specified configurations
 SetHeading "Backstage backend/app"
+echo "mkdocs location: $(which mkdocs)"
 yarn start \
   --config ${BACKSTAGE_APP_DIR}/app-config.yaml \
   --config ${BACKSTAGE_APP_DIR}/app-config.local.yaml
 
 # # DEBUG config
-# echo ${GITHUB_TOKEN}
+# echo ${GITHUB_TOKEN_BACKSTAGE}
 # echo ${AUTH_GITHUB_CLIENT_ID}
 # echo ${AUTH_GITHUB_CLIENT_SECRET}
 # yarn backstage-cli config:print \
 #   --config ./app-config.yaml \
 #   --config ./app-config.local.yaml
+
+# yarn backstage-cli config:print --config app-config.yaml --config app-config.local.yaml | sed -n '/techdocs:/,/^[^ ]/p'
