@@ -1,17 +1,36 @@
-# ✅ Working Backstage Installation on Kubernetes (Kind)
+# Backstage on Kubernetes (Kind)
 
-## Architecture
+This document describes the complete setup of a working Backstage environment running on a local Kind cluster.
+
+The environment consists of:
+
+- Backstage deployed via Helm
+- PostgreSQL deployed as a separate Helm release
+- Kubernetes Secrets managed separately
+- GitHub integration support
+- Guest authentication
+- TechDocs support
+- Persistent PostgreSQL storage
+
+---
+
+# Architecture
 
 ```text
 Kind Cluster (backstage)
 
 Namespace: backstage
 ├── Helm Release: backstage
-│   ├── Backstage UI
+│   ├── Backstage Frontend
 │   └── Backstage Backend
 │
-└── Helm Release: backstage-postgresql
-    └── PostgreSQL
+├── Helm Release: backstage-postgresql
+│   └── PostgreSQL
+│
+└── Kubernetes Secrets
+    ├── backstage-db
+    ├── backstage-github
+    └── backstage-github-auth
 
 Namespace: ingress-nginx
 └── NGINX Ingress Controller
@@ -25,34 +44,177 @@ Namespace: python
 
 ---
 
-# 1. Create the Kind Cluster
+# Prerequisites
 
-Create the cluster:
+The following tools must be installed:
 
 ```bash
-kind create cluster --name backstage
+kubectl
+helm
+kind
+docker
 ```
 
-Verify the cluster:
+Verify installation:
 
 ```bash
-kubectl cluster-info
-kubectl get nodes
+kubectl version --client
+helm version
+kind version
+docker --version
 ```
 
 ---
 
-# 2. Install PostgreSQL
+# Directory Structure
 
-PostgreSQL is installed as a standalone Helm release.
+```text
+backstage-app/
+├── config.sh
+├── secrets.sh
+├── setup-secrets.sh
+├── setup-postgresql.sh
+├── setup-backstage.sh
+├── shared.sh
+│
+├── charts/
+│   ├── backstage/
+│   │   └── values-backstage.yaml
+│   │
+│   └── postgresql/
+│       └── values-postgresql.yaml
+│
+└── docs/
+    └── setup-backstage-on-k8s.md
+```
+
+---
+
+# Step 1 - Configure Versions
+
+Create the central configuration file.
+
+## config.sh
+
+```bash
+#!/usr/bin/env bash
+
+##################################################################
+# Global Configuration
+##################################################################
+
+BACKSTAGE_CHART_VERSION="2.10.2"
+BACKSTAGE_IMAGE_VERSION="1.42.0"
+
+POSTGRESQL_CHART_VERSION="16.7.27"
+```
+
+All installation scripts will use these versions.
+
+---
+
+# Step 2 - Configure Secrets
+
+Create the secrets configuration file.
+
+## secrets.sh
+
+```bash
+#!/usr/bin/env bash
+
+##################################################################
+# PostgreSQL
+##################################################################
+
+POSTGRES_USER="backstage"
+POSTGRES_PASSWORD="backstage"
+POSTGRES_DATABASE="backstage"
+
+##################################################################
+# GitHub Personal Access Token
+##################################################################
+
+GITHUB_TOKEN="<your-token>"
+
+##################################################################
+# GitHub OAuth Application
+##################################################################
+
+AUTH_GITHUB_CLIENT_ID="<client-id>"
+AUTH_GITHUB_CLIENT_SECRET="<client-secret>"
+```
+
+Do not commit this file to Git.
+
+Add it to `.gitignore`.
+
+```gitignore
+secrets.sh
+```
+
+---
+
+# Step 3 - Create Kubernetes Secrets
+
+Create all required Kubernetes secrets.
+
+```bash
+./setup-secrets.sh
+```
+
+Verify:
+
+```bash
+kubectl get secrets -n backstage
+```
+
+Expected:
+
+```text
+backstage-db
+backstage-github
+backstage-github-auth
+```
+
+---
+
+# Step 4 - Install PostgreSQL
+
+Install PostgreSQL as a standalone Helm release.
 
 ```bash
 ./setup-postgresql.sh
 ```
 
-## Configuration
+Verify:
 
-`charts/postgresql/values-postgresql.yaml`
+```bash
+kubectl get pods -n backstage
+```
+
+Expected:
+
+```text
+backstage-postgresql-0   Running
+```
+
+Check the service:
+
+```bash
+kubectl get svc -n backstage
+```
+
+Expected:
+
+```text
+backstage-postgresql
+```
+
+---
+
+# PostgreSQL Configuration
+
+## charts/postgresql/values-postgresql.yaml
 
 ```yaml
 auth:
@@ -67,95 +229,134 @@ primary:
     size: 5Gi
 ```
 
-Verify the installation:
-
-```bash
-helm list -n backstage
-kubectl get pods -n backstage
-kubectl get pvc -n backstage
-```
-
 ---
 
-# 3. Configure Backstage
+# Step 5 - Configure Backstage
 
-Disable the built-in PostgreSQL deployment.
-
-## values-backstage.yaml
+## charts/backstage/values-backstage.yaml
 
 ```yaml
 postgresql:
   enabled: false
-```
 
-Configure Backstage to use the external PostgreSQL service:
+backstage:
 
-```yaml
-backend:
-  database:
-    client: pg
-    connection:
-      host: backstage-postgresql
-      port: 5432
-      user: backstage
-      password: backstage
-      database: backstage
+  extraEnvVars:
+
+    - name: GITHUB_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: backstage-github
+          key: token
+
+    - name: AUTH_GITHUB_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: backstage-github-auth
+          key: client-id
+
+    - name: AUTH_GITHUB_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: backstage-github-auth
+          key: client-secret
+
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: backstage-db
+          key: password
+
+  image:
+    registry: ghcr.io
+    repository: backstage/backstage
+    tag: "1.42.0"
+
+  appConfig:
+
+    app:
+      title: Backstage
+      baseUrl: http://localhost:7007
+
+    organization:
+      name: Local Development
+
+    backend:
+      baseUrl: http://localhost:7007
+
+      database:
+        client: pg
+        connection:
+          host: backstage-postgresql
+          port: 5432
+          user: backstage
+          password: ${POSTGRES_PASSWORD}
+          database: backstage
+
+    auth:
+      providers:
+        guest:
+          dangerouslyAllowOutsideDevelopment: true
+
+    techdocs:
+      builder: local
+      generator:
+        runIn: local
+      publisher:
+        type: local
+
+    catalog:
+      rules:
+        - allow:
+            - Component
+            - API
+            - Resource
+            - System
+            - Location
+
+    integrations:
+      github:
+        - host: github.com
+          token: ${GITHUB_TOKEN}
 ```
 
 ---
 
-# 4. Configure TechDocs
+# Step 6 - Install Backstage
 
-Backstage 1.42.0 requires a valid TechDocs configuration.
-
-```yaml
-techdocs:
-  builder: local
-  generator:
-    runIn: local
-  publisher:
-    type: local
-```
-
-Without this configuration, the `app` plugin will fail during startup.
-
----
-
-# 5. Install Backstage
-
-Deploy Backstage:
+Run:
 
 ```bash
 ./setup-backstage.sh
 ```
 
-The deployment uses:
+The script performs:
 
-```yaml
-image:
-  registry: ghcr.io
-  repository: backstage/backstage
-  tag: "1.42.0"
-```
+- Namespace validation
+- Helm repository validation
+- PostgreSQL service validation
+- PostgreSQL secret validation
+- GitHub secret validation
+- Backstage installation or upgrade
 
-Verify the deployment:
+Verify:
 
 ```bash
 kubectl get pods -n backstage
 ```
 
-Expected result:
+Expected:
 
 ```text
-backstage-xxxxx                Running
-backstage-postgresql-0         Running
+backstage-xxxxx            Running
+backstage-postgresql-0     Running
 ```
 
 ---
 
-# 6. Validate the Installation
+# Step 7 - Verify Backstage
 
-Check the Backstage logs:
+View logs:
 
 ```bash
 kubectl logs deployment/backstage -n backstage
@@ -167,9 +368,11 @@ Expected output:
 Plugin initialization complete
 ```
 
+This indicates a successful startup.
+
 ---
 
-# 7. Access Backstage
+# Step 8 - Access Backstage
 
 Create a port forward:
 
@@ -177,7 +380,7 @@ Create a port forward:
 kubectl port-forward svc/backstage -n backstage 7007:7007
 ```
 
-Open Backstage:
+Open:
 
 ```text
 http://localhost:7007
@@ -185,7 +388,7 @@ http://localhost:7007
 
 ---
 
-# 8. Verify Guest Authentication
+# Step 9 - Validate Authentication
 
 Run:
 
@@ -193,126 +396,82 @@ Run:
 curl -i http://localhost:7007/api/auth/guest/refresh
 ```
 
-Expected result:
+Expected response:
 
 ```text
 HTTP/1.1 200 OK
 ```
 
-The response should contain a token for:
-
-```text
-user:development/guest
-```
+The response should contain a valid authentication token.
 
 ---
 
-# 9. Upgrades
+# Upgrade Procedure
 
-Backstage and PostgreSQL are managed as separate Helm releases.
+Backstage can be upgraded safely without affecting PostgreSQL.
 
-Reinstall or upgrade Backstage:
+Run:
 
 ```bash
 ./setup-backstage.sh
 ```
 
-PostgreSQL remains untouched:
+The script executes:
 
-```text
-Helm Release:
-  backstage-postgresql
+```bash
+helm upgrade --install
 ```
 
 This preserves:
 
 - Catalog entities
 - Templates
-- User settings
-- Scaffolder data
-- Notifications
 - Plugin data
+- User settings
+- Notifications
+- Scaffolder data
 
 ---
 
 # Database Persistence
 
-Do not remove PostgreSQL or its persistent volumes when reinstalling Backstage.
+The PostgreSQL deployment and PVCs must not be removed during Backstage upgrades.
 
-✅ Allowed:
+Safe:
+
+```bash
+helm upgrade --install backstage ...
+```
+
+Safe:
 
 ```bash
 helm uninstall backstage -n backstage
 ```
 
-❌ Do not do this:
+Not safe:
 
 ```bash
 helm uninstall backstage-postgresql -n backstage
 ```
 
-❌ Do not do this:
+Not safe:
 
 ```bash
 kubectl delete pvc --all -n backstage
 ```
 
-Otherwise, all Backstage data will be permanently lost.
+Removing PVCs will permanently delete all stored Backstage data.
 
 ---
 
-# Current Working Configuration
-
-## PostgreSQL
-
-```yaml
-postgresql:
-  enabled: false
-```
-
-## Database Connection
-
-```yaml
-backend:
-  database:
-    client: pg
-    connection:
-      host: backstage-postgresql
-      port: 5432
-      user: backstage
-      password: backstage
-      database: backstage
-```
-
-## Guest Authentication
-
-```yaml
-auth:
-  providers:
-    guest:
-      dangerouslyAllowOutsideDevelopment: true
-```
-
-## TechDocs
-
-```yaml
-techdocs:
-  builder: local
-  generator:
-    runIn: local
-  publisher:
-    type: local
-```
-
----
-
-# Current Environment
+# Current Environment Status
 
 The following components are operational:
 
 - ✅ Kind
 - ✅ Helm
-- ✅ PostgreSQL (standalone Helm release)
+- ✅ PostgreSQL
 - ✅ Backstage 1.42.0
 - ✅ Guest Authentication
 - ✅ TechDocs
@@ -320,18 +479,19 @@ The following components are operational:
 - ✅ Scaffolder
 - ✅ Search
 - ✅ Notifications
-- ✅ ArgoCD integration ready
-- ✅ Platform Engineering lab environment
+- ✅ GitHub Integration
+- ✅ Persistent Database Storage
 
 ---
 
 # Recommended Next Steps
 
-1. Configure GitHub Catalog Integration
-2. Enable and configure the Kubernetes plugin
-3. Create custom Scaffolder templates
-4. Publish TechDocs from GitHub repositories
-5. Integrate ArgoCD applications into Backstage
-6. Register `python-app` as the first Catalog Component
+1. Configure GitHub Authentication
+2. Create a dedicated Backstage Catalog repository
+3. Register software templates
+4. Enable the Kubernetes plugin
+5. Integrate ArgoCD
+6. Publish TechDocs from GitHub repositories
+7. Register applications as catalog components
 
 This setup provides a solid foundation for building an Internal Developer Platform (IDP) with Backstage.

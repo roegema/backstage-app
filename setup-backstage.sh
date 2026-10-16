@@ -3,8 +3,9 @@
 ##################################################################
 # Author: Rene Oegema
 # Date: 15-10-2026
-# Version: 2.0
-# Description: Install Backstage using external PostgreSQL
+# Version: 3.3
+# Description: Install or upgrade Backstage using external
+#              PostgreSQL
 ##################################################################
 
 set -euo pipefail
@@ -17,10 +18,13 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null && pwd)
 PARENT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 SHARED_FILE="${PARENT_DIR}/shared.sh"
+CONFIG_FILE="${PARENT_DIR}/config.sh"
 
 source "${SHARED_FILE}"
+source "${CONFIG_FILE}"
 
 NS_BACKSTAGE="backstage"
+
 BACKSTAGE_RELEASE="backstage"
 
 VALUES_FILE="${SCRIPT_DIR}/charts/backstage/values-backstage.yaml"
@@ -42,17 +46,17 @@ function validate_prerequisites() {
   SetComment "All prerequisites found."
 }
 
-function validate_files() {
+function validate_configuration() {
 
-  SetHeading "Validate files"
+  SetHeading "Validate configuration"
 
-  if [[ ! -f "${VALUES_FILE}" ]]; then
-    SetError "Values file not found:"
-    SetError "${VALUES_FILE}"
-    exit 1
-  fi
+  [[ -f "${CONFIG_FILE}" ]] \
+    || { SetError "Configuration file not found: ${CONFIG_FILE}"; exit 1; }
 
-  SetComment "Values file found."
+  [[ -f "${VALUES_FILE}" ]] \
+    || { SetError "Values file not found: ${VALUES_FILE}"; exit 1; }
+
+  SetComment "Configuration validated."
 }
 
 function create_namespace() {
@@ -77,44 +81,72 @@ function add_helm_repo() {
   SetComment "Backstage Helm repository configured."
 }
 
-function uninstall_backstage() {
+function verify_postgresql() {
 
-  SetHeading "Remove existing Backstage release"
+  SetHeading "Verify PostgreSQL service"
 
-  if helm status "${BACKSTAGE_RELEASE}" \
+  kubectl get svc backstage-postgresql \
+    -n "${NS_BACKSTAGE}" >/dev/null 2>&1 \
+    || {
+      SetError "Service 'backstage-postgresql' not found."
+      SetError "Run setup-postgresql.sh first."
+      exit 1
+    }
+
+  SetComment "PostgreSQL service found."
+}
+
+function verify_postgres_secret() {
+
+  SetHeading "Verify PostgreSQL secret"
+
+  kubectl get secret backstage-db \
+    -n "${NS_BACKSTAGE}" >/dev/null 2>&1 \
+    || {
+      SetError "Secret 'backstage-db' not found."
+      SetError "Run setup-secrets.sh first."
+      exit 1
+    }
+
+  SetComment "PostgreSQL secret found."
+}
+
+function verify_github_secret() {
+
+  SetHeading "Verify GitHub secret"
+
+  if kubectl get secret backstage-github \
       -n "${NS_BACKSTAGE}" >/dev/null 2>&1; then
-
-    helm uninstall "${BACKSTAGE_RELEASE}" \
-      -n "${NS_BACKSTAGE}"
-
-    SetComment "Existing Backstage release removed."
+    SetComment "GitHub secret found."
   else
-    SetComment "No existing Backstage release found."
+    SetWarning "GitHub secret not found."
+    SetWarning "GitHub integrations may not function."
   fi
 }
 
-function verify_postgresql() {
+function verify_github_auth_secret() {
 
-  SetHeading "Verify PostgreSQL"
+  SetHeading "Verify GitHub OAuth secret"
 
-  if kubectl get svc backstage-postgresql \
+  if kubectl get secret backstage-github-auth \
       -n "${NS_BACKSTAGE}" >/dev/null 2>&1; then
-
-    SetComment "PostgreSQL service found."
+    SetComment "GitHub OAuth secret found."
   else
-    SetError "PostgreSQL service 'backstage-postgresql' not found."
-    SetError "Run setup-postgresql.sh first."
-    exit 1
+    SetWarning "GitHub OAuth secret not found."
+    SetWarning "GitHub authentication may not function."
   fi
 }
 
 function install_backstage() {
 
-  SetHeading "Install Backstage"
+  SetHeading "Install / Upgrade Backstage"
+
+  SetInfo "Chart Version"
+  echo "${BACKSTAGE_CHART_VERSION}"
 
   helm upgrade --install "${BACKSTAGE_RELEASE}" \
     backstage/backstage \
-    --version 2.10.2 \
+    --version "${BACKSTAGE_CHART_VERSION}" \
     --namespace "${NS_BACKSTAGE}" \
     --wait \
     --timeout 15m \
@@ -149,10 +181,6 @@ function verify_deployment() {
   echo ""
   SetInfo "Deployments"
   kubectl get deployments -n "${NS_BACKSTAGE}"
-
-  echo ""
-
-  SetComment "Deployment verification completed."
 }
 
 function show_backstage_info() {
@@ -160,19 +188,45 @@ function show_backstage_info() {
   SetHeading "Backstage information"
 
   echo ""
-  SetInfo "Port Forward"
+  SetInfo "Chart Version"
+  echo "${BACKSTAGE_CHART_VERSION}"
 
+  echo ""
+  SetInfo "Image Version"
+  echo "${BACKSTAGE_IMAGE_VERSION}"
+
+  echo ""
+  SetInfo "Port Forward"
   echo "kubectl port-forward svc/backstage -n backstage 7007:7007"
 
   echo ""
   SetInfo "Open Backstage"
-
   echo "http://localhost:7007"
 
   echo ""
-  SetInfo "Authentication test"
-
+  SetInfo "Authentication Test"
   echo "curl -i http://localhost:7007/api/auth/guest/refresh"
+
+  echo ""
+  SetInfo "Helm Releases"
+  helm list -n "${NS_BACKSTAGE}"
+}
+
+function start_port_forward() {
+
+  SetHeading "Start Port Forward"
+
+  if pgrep -f "kubectl port-forward svc/backstage.*7007:7007" >/dev/null; then
+    SetComment "Port-forward already running."
+  else
+    nohup kubectl port-forward \
+      svc/backstage \
+      -n "${NS_BACKSTAGE}" \
+      7007:7007 \
+      >/tmp/backstage-port-forward.log 2>&1 &
+
+    SetComment "Port-forward started."
+  fi
 }
 
 #-----------------------------------------------------------------
@@ -186,15 +240,16 @@ SetTopHeading "Setup Backstage"
 cd "${SCRIPT_DIR}"
 
 validate_prerequisites
-validate_files
+validate_configuration
 
 create_namespace
 
 add_helm_repo
 
 verify_postgresql
-
-uninstall_backstage
+verify_postgres_secret
+verify_github_secret
+verify_github_auth_secret
 
 install_backstage
 
@@ -204,40 +259,6 @@ verify_deployment
 
 show_backstage_info
 
+# start_port_forward
+
 SetComment "Backstage installation completed successfully."
-
-####
-exit 0
-####
-
-
-echo "=== Uninstall Helm release ==="
-helm uninstall backstage -n backstage || true
-
-echo "=== Delete PVCs ==="
-kubectl delete pvc --all -n backstage --ignore-not-found=true
-
-echo "=== Delete Secrets ==="
-kubectl delete secret --all -n backstage --ignore-not-found=true
-
-echo "=== Delete ConfigMaps ==="
-kubectl delete configmap --all -n backstage --ignore-not-found=true
-
-echo "=== Delete Namespace ==="
-kubectl delete namespace backstage --ignore-not-found=true
-
-echo "=== Wait for namespace removal ==="
-while kubectl get namespace backstage >/dev/null 2>&1; do
-  echo "Waiting for namespace backstage to disappear..."
-  sleep 2
-done
-
-echo "=== Recreate Namespace ==="
-kubectl create namespace backstage
-
-echo "=== Cleanup complete ==="
-
-kubectl get ns backstage
-kubectl get all -n backstage
-kubectl get pvc -n backstage
-kubectl get secret -n backstage

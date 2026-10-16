@@ -2,19 +2,57 @@ postgresql:
   enabled: false
 
 backstage:
+  extraEnvVars:
+    - name: GITHUB_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: backstage-github
+          key: token
+    - name: AUTH_GITHUB_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: backstage-github-auth
+          key: client-id
+
+    - name: AUTH_GITHUB_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: backstage-github-auth
+          key: client-secret
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: backstage-db
+          key: password
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          name: backstage-db
+          key: user
+    - name: POSTGRES_HOST
+      valueFrom:
+        secretKeyRef:
+          name: backstage-db
+          key: host
+    - name: POSTGRES_DB
+      valueFrom:
+        secretKeyRef:
+          name: backstage-db
+          key: database
+
   image:
-    registry: ghcr.io
-    repository: backstage/backstage
-    tag: "1.42.0"
+    registry: docker.io
+    repository: roegema/backstage
+    tag: "1.48.0-github-r01"
 
   appConfig:
 
     app:
-      title: Backstage
+      title: Backstage?
       baseUrl: http://localhost:7007
 
     organization:
-      name: Local Development
+      name: LocalDev
 
     backend:
       baseUrl: http://localhost:7007
@@ -22,16 +60,24 @@ backstage:
       database:
         client: pg
         connection:
-          host: backstage-postgresql
+          host: ${POSTGRES_HOST}
           port: 5432
-          user: backstage
-          password: backstage
-          database: backstage
+          user: ${POSTGRES_USER}
+          password: ${POSTGRES_PASSWORD}
+          database: ${POSTGRES_DB}
 
     auth:
+      environment: development
       providers:
         guest:
           dangerouslyAllowOutsideDevelopment: true
+        github:
+          development:
+            clientId: ${AUTH_GITHUB_CLIENT_ID}
+            clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+            signIn:
+              resolvers:
+                - resolver: usernameMatchingUserEntityName
 
     techdocs:
       builder: local
@@ -48,3 +94,32 @@ backstage:
             - Resource
             - System
             - Location
+            - User
+            - Group
+            - Template
+
+      locations:
+        - type: file
+          target: ./catalog/entities/users.yaml
+          rules:
+            - allow: [User]
+
+        - type: file
+          target: ./catalog/entities/groups.yaml
+          rules:
+            - allow: [Group]
+
+        - type: file
+          target: ./catalog/entities/component.yaml
+          rules:
+            - allow: [Component]
+
+        - type: url
+          target: https://github.com/roegema/backstage-software-templates/blob/main/python-app/template/template.yaml
+          rules:
+            - allow: [Template]
+
+    integrations:
+      github:
+        - host: github.com
+          token: ${GITHUB_TOKEN}

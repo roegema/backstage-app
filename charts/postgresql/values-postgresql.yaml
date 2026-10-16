@@ -1,8 +1,9 @@
 auth:
-  postgresPassword: postgres
-  username: backstage
-  password: backstage
-  database: backstage
+  postgresPassword: ${POSTGRES_PASSWORD}
+  username: ${POSTGRES_USER}
+  password: ${POSTGRES_PASSWORD}
+  database: ${POSTGRES_DB}
+  host: ${POSTGRES_HOST}
 
 primary:
   persistence:
