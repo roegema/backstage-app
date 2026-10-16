@@ -119,7 +119,7 @@ function verify_github_secret() {
 
   SetHeading "Verify GitHub secret"
 
-  if kubectl get secret backstage-github \
+  if kubectl get secret ${GITHUB_SECRET} \
       -n "${NS_BACKSTAGE}" >/dev/null 2>&1; then
     SetComment "GitHub secret found."
   else
@@ -132,7 +132,7 @@ function verify_github_auth_secret() {
 
   SetHeading "Verify GitHub OAuth secret"
 
-  if kubectl get secret backstage-github-auth \
+  if kubectl get secret ${GITHUB_AUTH_SECRET} \
       -n "${NS_BACKSTAGE}" >/dev/null 2>&1; then
     SetComment "GitHub OAuth secret found."
   else

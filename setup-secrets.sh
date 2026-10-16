@@ -18,9 +18,11 @@ PARENT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 SHARED_FILE="${PARENT_DIR}/shared.sh"
 SECRETS_FILE="${PARENT_DIR}/secrets.sh"
+CONFIG_FILE="${PARENT_DIR}/config.sh"
 
 source "${SHARED_FILE}"
 source "${SECRETS_FILE}"
+source "${CONFIG_FILE}"
 
 NS_BACKSTAGE="backstage"
 
@@ -60,7 +62,7 @@ function create_github_secret() {
 
   SetHeading "Create GitHub token secret"
 
-  kubectl create secret generic backstage-github \
+  kubectl create secret generic ${GITHUB_SECRET} \
     --namespace "${NS_BACKSTAGE}" \
     --from-literal=token="${GITHUB_TOKEN}" \
     --dry-run=client \
@@ -73,7 +75,7 @@ function create_github_auth_secret() {
 
   SetHeading "Create GitHub OAuth secret"
 
-  kubectl create secret generic backstage-github-auth \
+  kubectl create secret generic ${GITHUB_AUTH_SECRET} \
     --namespace "${NS_BACKSTAGE}" \
     --from-literal=client-id="${AUTH_GITHUB_CLIENT_ID}" \
     --from-literal=client-secret="${AUTH_GITHUB_CLIENT_SECRET}" \
